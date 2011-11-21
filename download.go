@@ -384,20 +384,5 @@ func (vcs *vcs) checkoutRepo(srcDir, pkgprefix, repo string) error {
 		}
 		return vcs.updateRepo(dst)
 	}
-	if *update {
-		// Retrieve new revisions from the remote branch, if the VCS
-		// supports this operation independently (e.g. svn doesn't)
-		if vcs.pull != "" {
-			if vcs.pullForceFlag != "" {
-				if err = run(dst, nil, vcs.cmd, vcs.pull, vcs.pullForceFlag); err != nil {
-					return err
-				}
-			} else if err = run(dst, nil, vcs.cmd, vcs.pull); err != nil {
-				return err
-			}
-		}
-		// Update to release or latest revision
-		return vcs.updateRepo(dst)
-	}
 	return nil
 }

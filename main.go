@@ -38,13 +38,6 @@ var (
 	installedPkgs = make(map[string]map[string]bool)
 	schemeRe      = regexp.MustCompile(`^[a-z]+://`)
 
-	allpkg            = flag.Bool("a", false, "install all previously installed packages")
-	reportToDashboard = flag.Bool("dashboard", true, "report public packages at "+dashboardURL)
-	update            = flag.Bool("u", false, "update already-downloaded packages")
-	doInstall         = flag.Bool("install", true, "build and install")
-	clean             = flag.Bool("clean", false, "clean the package directory before installing")
-	nuke              = flag.Bool("nuke", false, "clean the package directory and target before installing")
-	useMake           = flag.Bool("make", true, "use make to build and install")
 	verbose           = flag.Bool("v", false, "verbose")
 )
 
@@ -92,23 +85,6 @@ func main() {
 	visit["unsafe"] = done
 
 	args := flag.Args()
-	if *allpkg {
-		if len(args) != 0 {
-			usage() // -a and package list both provided
-		}
-		// install all packages that were ever installed
-		n := 0
-		for _, pkgs := range installedPkgs {
-			for pkg := range pkgs {
-				args = append(args, pkg)
-				n++
-			}
-		}
-		if n == 0 {
-			logf("no installed packages\n")
-			os.Exit(1)
-		}
-	}
 	if len(args) == 0 {
 		usage()
 	}
@@ -117,8 +93,7 @@ func main() {
 			errorf("%q used in import path, try %q\n", s, path[len(s):])
 			continue
 		}
-
-		install(path, "")
+		document(path)
 	}
 	if errors_ {
 		os.Exit(1)
@@ -172,24 +147,8 @@ func logPackage(pkg string, tree *build.Tree) (logged bool) {
 	return true
 }
 
-// install installs the package named by path, which is needed by parent.
-func install(pkg, parent string) {
-	// Make sure we're not already trying to install pkg.
-	switch visit[pkg] {
-	case done:
-		return
-	case visiting:
-		fmt.Fprintf(os.Stderr, "%s: package dependency cycle\n", argv0)
-		printDeps(parent)
-		fmt.Fprintf(os.Stderr, "\t%s\n", pkg)
-		os.Exit(2)
-	}
-	parents[pkg] = parent
-	visit[pkg] = visiting
-	defer func() {
-		visit[pkg] = done
-	}()
-
+// show godoc of current package
+func document(pkg string) {
 	// Don't allow trailing '/'
 	if strings.HasSuffix(pkg, "/") {
 		errorf("%s should not have trailing '/'\n", pkg)
@@ -201,95 +160,35 @@ func install(pkg, parent string) {
 	tree, pkg, err := build.FindTree(pkg)
 	// Don't build the standard library.
 	if err == nil && tree.Goroot && isStandardPath(pkg) {
-		if parent == "" {
-			errorf("%s: can not goinstall the standard library\n", pkg)
-		} else {
-			printf("%s: skipping standard library\n", pkg)
-		}
+		errorf("%s: can not goinstall the standard library\n", pkg)
 		return
 	}
+
+	var dir string
 	// Download remote packages if not found or forced with -u flag.
-	remote, public := isRemote(pkg), false
-	if remote {
-		if err == build.ErrNotFound || (err == nil && *update) {
-			// Download remote package.
-			printf("%s: download\n", pkg)
-			public, err = download(pkg, tree.SrcDir())
-		} else {
-			// Test if this is a public repository
-			// (for reporting to dashboard).
-			m, _ := findPublicRepo(pkg)
-			public = m != nil
-		}
-	}
-	if err != nil {
-		terrorf(tree, "%s: %v\n", pkg, err)
-		return
-	}
-	dir := filepath.Join(tree.SrcDir(), filepath.FromSlash(pkg))
-
-	// Install prerequisites.
-	dirInfo, err := build.ScanDir(dir)
-	if err != nil {
-		terrorf(tree, "%s: %v\n", pkg, err)
-		return
-	}
-	// We reserve package main to identify commands.
-	if parent != "" && dirInfo.Package == "main" {
-		terrorf(tree, "%s: found only package main in %s; cannot import", pkg, dir)
-		return
-	}
-	for _, p := range dirInfo.Imports {
-		if p != "C" {
-			install(p, pkg)
-		}
-	}
-	if errors_ {
-		return
-	}
-
-	// Install this package.
-	if *useMake {
-		err := domake(dir, pkg, tree, dirInfo.IsCommand())
-		if err != nil {
-			terrorf(tree, "%s: install: %v\n", pkg, err)
-			return
-		}
+	remote, _ := isRemote(pkg), false
+	if !remote {
+		dir = filepath.Join(tree.SrcDir(), filepath.FromSlash(pkg))
 	} else {
-		script, err := build.Build(tree, pkg, dirInfo)
+		dir, _ = ioutil.TempDir("", "godocr")
+		_, err = download(pkg, dir)
 		if err != nil {
-			terrorf(tree, "%s: install: %v\n", pkg, err)
+			errorf("%s: problem downloading: %s\n", pkg, err)
 			return
 		}
-		if *nuke {
-			printf("%s: nuke\n", pkg)
-			script.Nuke()
-		} else if *clean {
-			printf("%s: clean\n", pkg)
-			script.Clean()
-		}
-		if *doInstall {
-			if script.Stale() {
-				printf("%s: install\n", pkg)
-				if err := script.Run(); err != nil {
-					terrorf(tree, "%s: install: %v\n", pkg, err)
-					return
-				}
-			} else {
-				printf("%s: up-to-date\n", pkg)
-			}
-		}
+		dir = filepath.Join(dir, filepath.FromSlash(pkg))
+		fmt.Println("DIR", dir)
 	}
 
-	if remote {
-		// mark package as installed in goinstall.log
-		logged := logPackage(pkg, tree)
-
-		// report installation to the dashboard if this is the first
-		// install from a public repository.
-		if logged && public {
-			maybeReportToDashboard(pkg)
-		}
+	cmd := exec.Command("godoc", ".")
+	cmd.Stdin = bytes.NewBuffer(nil)
+	cmd.Dir = dir
+	printf("%s: %s %s\n", dir, cmd.Path, ".")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		errorf("%s: godoc: %s\n", pkg, err)
+	} else {
+		fmt.Print(string(out))
 	}
 }
 

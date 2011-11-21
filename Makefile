@@ -2,15 +2,14 @@
 # Use of this source code is governed by a BSD-style
 # license that can be found in the LICENSE file.
 
-include ../../Make.inc
+include $(GOROOT)/src/Make.inc
 
-TARG=goinstall
+TARG=godocr
 GOFILES=\
 	download.go\
 	main.go\
-	make.go\
 
-include ../../Make.cmd
+include $(GOROOT)/src/Make.cmd
 
 test:
 	gotest
