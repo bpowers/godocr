@@ -158,26 +158,20 @@ func document(pkg string) {
 	// Check whether package is local or remote.
 	// If remote, download or update it.
 	tree, pkg, err := build.FindTree(pkg)
-	// Don't build the standard library.
-	if err == nil && tree.Goroot && isStandardPath(pkg) {
-		errorf("%s: can not goinstall the standard library\n", pkg)
-		return
-	}
 
-	var dir string
+	var dir, baseDir string
 	// Download remote packages if not found or forced with -u flag.
-	remote, _ := isRemote(pkg), false
+	remote := isRemote(pkg)
 	if !remote {
 		dir = filepath.Join(tree.SrcDir(), filepath.FromSlash(pkg))
 	} else {
-		dir, _ = ioutil.TempDir("", "godocr")
-		_, err = download(pkg, dir)
+		baseDir, _ = ioutil.TempDir("", "godocr")
+		_, err = download(pkg, baseDir)
 		if err != nil {
 			errorf("%s: problem downloading: %s\n", pkg, err)
 			return
 		}
-		dir = filepath.Join(dir, filepath.FromSlash(pkg))
-		fmt.Println("DIR", dir)
+		dir = filepath.Join(baseDir, filepath.FromSlash(pkg))
 	}
 
 	cmd := exec.Command("godoc", ".")
@@ -189,6 +183,15 @@ func document(pkg string) {
 		errorf("%s: godoc: %s\n", pkg, err)
 	} else {
 		fmt.Print(string(out))
+	}
+
+	// only clean up after ourselves if we've downloaded a remote
+	// directory
+	if remote {
+		err = os.RemoveAll(baseDir)
+		if err != nil {
+			errorf("%s: couldn't clean up after ourselves: %s\n", pkg, err)
+		}
 	}
 }
 
