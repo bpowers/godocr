@@ -13,8 +13,11 @@ latest commit from github (as a full checkout of a large project is a
 fairly heavyweight operation), and enabling the pretty-printed http
 server.
 
-Possibly of interest is that if godocr is run on a package that is
-already installed, or in the standard library, it simply calls godoc.
+godocr will simply call godoc for packages in the standard library,
+but will check out a temporary copy of the latest version of a package
+even if you have it installed.  This is potentially useful if you have
+an older version goinstalled, but are interested in the godocs for the
+latest development copy.
 
 
 license

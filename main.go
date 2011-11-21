@@ -174,11 +174,9 @@ func document(pkg string) {
 		dir = filepath.Join(baseDir, filepath.FromSlash(pkg))
 	}
 
-	cmd := exec.Command("godoc", ".")
-	cmd.Stdin = bytes.NewBuffer(nil)
-	cmd.Dir = dir
-	printf("%s: %s %s\n", dir, cmd.Path, ".")
-	out, err := cmd.CombinedOutput()
+	// Run godoc either in the standard library or in the checked
+	// out repo.
+	out, err := runGodoc(dir)
 	if err != nil {
 		errorf("%s: godoc: %s\n", pkg, err)
 	} else {
@@ -193,6 +191,13 @@ func document(pkg string) {
 			errorf("%s: couldn't clean up after ourselves: %s\n", pkg, err)
 		}
 	}
+}
+
+func runGodoc(dir string) ([]byte, error) {
+	cmd := exec.Command("godoc", ".")
+	cmd.Stdin = bytes.NewBuffer(nil)
+	cmd.Dir = dir
+	return cmd.CombinedOutput()
 }
 
 // Is this a standard package path?  strings container/list etc.
